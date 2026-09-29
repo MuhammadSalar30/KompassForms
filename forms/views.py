@@ -8,11 +8,39 @@ from django.contrib.auth.hashers import make_password,check_password
 from django.http import JsonResponse
 from django.db import transaction
 from django.utils import timezone
+import json
+import os
+from collections import Counter, defaultdict
+from django.utils.dateparse import parse_date, parse_time
+from .models import Response as FormResponse, Answer, AnswerFile
 
 
 from .models import *
 from django.contrib import messages
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_SHORT_LEN = 500
+MAX_LONG_LEN = 5000
+BLOCKED_EXTENSIONS = {".exe", ".bat", ".cmd", ".com", ".msi", ".dll", ".scr",
+                      ".js", ".vbs", ".ps1", ".sh", ".php", ".py"}
 
+
+def is_form_owner(request, form):
+    return "user_id" in request.session and str(form.owner_id) == request.session["user_id"]
+
+
+def form_access_status(request, form):
+    """Returns 'ok', 'not_found' or 'denied' for the current visitor."""
+    owner = is_form_owner(request, form)
+
+    if not form.is_published and not owner:
+        return "not_found"
+
+    if form.access_type == "restricted" and not owner:
+        email = request.session.get("user_email", "").strip().lower()
+        if not email or not form.invites.filter(email=email).exists():
+            return "denied"
+
+    return "ok"
 # Create your views here.
 def Homepage(Request):
     return HttpResponse("Home Page")
@@ -345,6 +373,33 @@ def manage_access(request, form_id):
         return JsonResponse({"success": True})
 
     return JsonResponse({"success": False, "message": "Unknown action."}, status=400)
+#def view_form(request, form_id):
+
+ #   try:
+  #      form = Form.objects.prefetch_related("elements__options").get(form_id=form_id)
+  #  except Form.DoesNotExist:
+   #     return render(request, "form_not_found.html", status=404)
+
+   # is_owner = "user_id" in request.session and str(form.owner.user_id) == request.session["user_id"]
+
+  #  if not form.is_published and not is_owner:
+   #     return render(request, "form_not_found.html", status=404)
+
+  #  if form.access_type == "restricted" and not is_owner:
+   #     viewer_email = request.session.get("user_email", "").strip().lower()
+    #    if not form.invites.filter(email=viewer_email).exists():
+     #       return render(request, "form_access_denied.html", status=403)
+   # elements = list(form.elements.order_by("order"))
+
+    # Precompute the numeric range for linear-scale questions,
+    # since Django templates can't build an arbitrary range on their own.
+   # for el in elements:
+    #    if el.question_type == "linear_scale":
+      #      lo = el.scale_min if el.scale_min is not None else 1
+      #      hi = el.scale_max if el.scale_max is not None else 5
+     #       el.scale_range = range(lo, hi + 1)
+
+   # return render(request, "public_form.html", {"form": form, "elements": elements})
 def view_form(request, form_id):
 
     try:
@@ -352,26 +407,242 @@ def view_form(request, form_id):
     except Form.DoesNotExist:
         return render(request, "form_not_found.html", status=404)
 
-    is_owner = "user_id" in request.session and str(form.owner.user_id) == request.session["user_id"]
+    status = form_access_status(request, form)
 
-    if not form.is_published and not is_owner:
+    if status == "not_found":
         return render(request, "form_not_found.html", status=404)
+    if status == "denied":
+        return render(request, "form_access_denied.html", status=403)
 
-    if form.access_type == "restricted" and not is_owner:
-        viewer_email = request.session.get("user_email", "").strip().lower()
-        if not form.invites.filter(email=viewer_email).exists():
-            return render(request, "form_access_denied.html", status=403)
-    elements = list(form.elements.order_by("order"))
+    return render(request, "public_form.html", {"form": form, "elements": form.elements.all()})
 
-    # Precompute the numeric range for linear-scale questions,
-    # since Django templates can't build an arbitrary range on their own.
-    for el in elements:
-        if el.question_type == "linear_scale":
-            lo = el.scale_min if el.scale_min is not None else 1
-            hi = el.scale_max if el.scale_max is not None else 5
-            el.scale_range = range(lo, hi + 1)
 
-    return render(request, "public_form.html", {"form": form, "elements": elements})
+def validate_answer(element, post, files):
+    """
+    Returns (stored_text, uploaded_files, error_message).
+    stored_text is "" when the question was left blank.
+    """
+    key = f"answer_{element.element_id}"
+    qtype = element.question_type
+    required = element.is_required
+    required_msg = "This question is required."
+    valid_options = [o.option_text for o in element.options.all()]
+
+    def blank():
+        return "", [], (required_msg if required else None)
+
+    # ---- short answer / paragraph ----
+    if qtype in ("short", "paragraph"):
+        value = post.get(key, "").strip()
+        limit = MAX_SHORT_LEN if qtype == "short" else MAX_LONG_LEN
+        if not value:
+            return blank()
+        if len(value) > limit:
+            return "", [], f"Please keep this answer under {limit} characters."
+        return value, [], None
+
+    # ---- multiple choice / dropdown ----
+    if qtype in ("mcq", "dropdown"):
+        value = post.get(key, "")
+        if not value:
+            return blank()
+        if value not in valid_options:
+            return "", [], "Please choose one of the listed options."
+        return value, [], None
+
+    # ---- checkboxes ----
+    if qtype == "checkbox":
+        values = post.getlist(key)
+        if not values:
+            return blank()
+        if any(v not in valid_options for v in values):
+            return "", [], "Please choose only from the listed options."
+        return json.dumps(values), [], None
+
+    # ---- linear scale ----
+    if qtype == "linear_scale":
+        raw = post.get(key, "").strip()
+        if not raw:
+            return blank()
+        try:
+            number = int(raw)
+        except ValueError:
+            return "", [], "Please pick a value on the scale."
+        if number not in element.scale_range:
+            return "", [], "That value is outside the scale."
+        return str(number), [], None
+
+    # ---- grids ----
+    if qtype in ("mcq_grid", "checkbox_grid"):
+        multi = qtype == "checkbox_grid"
+        result = {}
+        for i, row in enumerate(element.grid_row_list):
+            picked = post.getlist(f"{key}__{i}")
+            if not multi:
+                picked = picked[:1]
+            if any(p not in valid_options for p in picked):
+                return "", [], "Please choose only from the listed columns."
+            if picked:
+                result[row] = picked if multi else picked[0]
+            elif required:
+                return "", [], f"Please answer every row (missing: {row})."
+        return (json.dumps(result) if result else ""), [], None
+
+    # ---- date / time ----
+    if qtype in ("date", "time"):
+        raw = post.get(key, "").strip()
+        if not raw:
+            return blank()
+        try:
+            parsed = parse_date(raw) if qtype == "date" else parse_time(raw)
+        except ValueError:
+            parsed = None
+        if parsed is None:
+            return "", [], f"Please enter a valid {qtype}."
+        return (parsed.isoformat() if qtype == "date" else parsed.strftime("%H:%M")), [], None
+
+    # ---- file upload ----
+    if qtype == "file_upload":
+        uploads = files.getlist(key)
+        if not uploads:
+            return blank()
+        if len(uploads) > element.max_files:
+            return "", [], f"You can upload at most {element.max_files} file(s)."
+        for f in uploads:
+            if f.size > MAX_UPLOAD_BYTES:
+                return "", [], f"“{f.name}” is larger than 10 MB."
+            if os.path.splitext(f.name)[1].lower() in BLOCKED_EXTENSIONS:
+                return "", [], f"“{f.name}” is not an allowed file type."
+        return "", uploads, None
+
+    return "", [], None
+@transaction.atomic
+def submit_response(request, form_id):
+
+    if request.method != "POST":
+        return JsonResponse({"success": False, "message": "Invalid request method."}, status=405)
+
+    try:
+        form = Form.objects.prefetch_related("elements__options").get(form_id=form_id)
+    except Form.DoesNotExist:
+        return JsonResponse({"success": False, "message": "This form doesn't exist."}, status=404)
+
+    if not form.is_published:
+        return JsonResponse({"success": False, "message": "This form isn't accepting responses."}, status=403)
+
+    if form_access_status(request, form) != "ok":
+        return JsonResponse({"success": False, "message": "You don't have access to this form."}, status=403)
+
+    # ---- validate everything first; save nothing if anything fails ----
+    errors = {}
+    collected = []
+
+    for element in form.elements.all():
+
+        if element.element_type != "question":
+            continue
+
+        stored, uploads, error = validate_answer(element, request.POST, request.FILES)
+
+        if error:
+            errors[str(element.element_id)] = error
+        elif stored or uploads:
+            collected.append((element, stored, uploads))
+
+    if errors:
+        return JsonResponse({
+            "success": False,
+            "message": "Please fix the highlighted questions.",
+            "errors": errors,
+        }, status=400)
+
+    if not collected:
+        return JsonResponse({
+            "success": False,
+            "message": "Please answer at least one question before submitting.",
+        }, status=400)
+
+    # ---- save ----
+    respondent = None
+    if "user_id" in request.session:
+        respondent = User.objects.filter(user_id=request.session["user_id"]).first()
+
+    response = FormResponse.objects.create(form=form, respondent=respondent)
+
+    for element, stored, uploads in collected:
+        answer = Answer.objects.create(response=response, element=element, answer_text=stored)
+        for upload in uploads:
+            AnswerFile.objects.create(answer=answer, file=upload)
+
+    return JsonResponse({"success": True, "message": "Your response has been recorded."})
+def build_summary(element, answers):
+
+    qtype = element.question_type
+    summary = {"element": element, "answered": len(answers), "answers": answers}
+
+    if qtype in ("mcq", "dropdown", "checkbox"):
+
+        counts = Counter()
+        for a in answers:
+            value = a.value
+            counts.update(value if isinstance(value, list) else [value])
+
+        summary["kind"] = "choice"
+        summary["rows"] = [
+            {
+                "label": opt.option_text,
+                "count": counts.get(opt.option_text, 0),
+                "percent": round(100 * counts.get(opt.option_text, 0) / len(answers)) if answers else 0,
+            }
+            for opt in element.options.all()
+        ]
+
+    elif qtype == "linear_scale":
+
+        counts = Counter()
+        for a in answers:
+            if a.answer_text.lstrip("-").isdigit():
+                counts[int(a.answer_text)] += 1
+
+        total = sum(counts.values())
+        summary["kind"] = "choice"
+        summary["rows"] = [
+            {
+                "label": n,
+                "count": counts.get(n, 0),
+                "percent": round(100 * counts.get(n, 0) / total) if total else 0,
+            }
+            for n in element.scale_range
+        ]
+        summary["average"] = round(sum(n * c for n, c in counts.items()) / total, 2) if total else None
+
+    elif qtype in ("mcq_grid", "checkbox_grid"):
+
+        columns = [o.option_text for o in element.options.all()]
+        rows = element.grid_row_list
+        counts = {row: Counter() for row in rows}
+
+        for a in answers:
+            for row, picked in a.grid_pairs:
+                if row in counts:
+                    counts[row].update(picked if isinstance(picked, list) else [picked])
+
+        summary["kind"] = "grid"
+        summary["columns"] = columns
+        summary["table"] = [
+            {"row": row, "cells": [counts[row].get(c, 0) for c in columns]}
+            for row in rows
+        ]
+
+    elif qtype == "file_upload":
+        summary["kind"] = "file"
+
+    else:
+        summary["kind"] = "text"
+
+    return summary
+
+
 def view_responses(request, form_id):
 
     if "user_id" not in request.session:
@@ -382,21 +653,33 @@ def view_responses(request, form_id):
     except Form.DoesNotExist:
         return HttpResponse("Form not found.", status=404)
 
-    responses = form.responses.select_related("respondent").prefetch_related("answers__question").order_by("-submitted_at")
+    elements = list(form.elements.filter(element_type="question").prefetch_related("options"))
+    responses = list(form.responses.select_related("respondent").order_by("-submitted_at"))
 
-    elements = form.elements.filter(element_type="question").order_by("order")
+    answers = (
+        Answer.objects.filter(response__form=form)
+        .select_related("element")
+        .prefetch_related("files")
+    )
 
-    context = {
+    by_response = defaultdict(dict)
+    by_element = defaultdict(list)
+
+    for a in answers:
+        by_response[a.response_id][a.element_id] = a
+        by_element[a.element_id].append(a)
+
+    for r in responses:
+        r.rows = [
+            {"element": el, "answer": by_response[r.response_id].get(el.element_id)}
+            for el in elements
+        ]
+
+    summaries = [build_summary(el, by_element[el.element_id]) for el in elements]
+
+    return render(request, "responses.html", {
         "form": form,
         "responses": responses,
-        "elements": elements,
-        "response_count": responses.count(),
-    }
-
-    return render(request, "responses.html", context)
-    #elements = form.elements.order_by("order")
-    #for el in elements:
-        #if el.question_type == "linear_scale":
-            #el.scale_range = range(el.scale_min or 1, (el.scale_max or 5) + 1)
-
-    #return render(request, "public_form.html", {"form": form, "elements": elements})
+        "summaries": summaries,
+        "response_count": len(responses),
+    })

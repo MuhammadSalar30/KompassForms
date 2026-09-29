@@ -15,6 +15,7 @@ urlpatterns=[
     path('forms/<uuid:form_id>/responses/', views.view_responses, name='view_responses'),
     path('dashboard/', views.forms_list_view, name='forms_list'),
     path('forms/edit/<uuid:form_id>/', views.forms_view, name='edit_form'),
+    path('f/<uuid:form_id>/submit/', views.submit_response, name='submit_response'),
     
   
 

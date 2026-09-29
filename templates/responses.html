@@ -240,14 +240,23 @@
             font-size: 48px;
             margin-bottom: 12px;
         }
-
+        .question-summary-meta { font-size: 12px; color: var(--text-muted); margin: -8px 0 14px; }
+        .answer-bar-count { width: 90px; }
+        .scale-average { margin: 10px 0 0; font-size: 13px; color: var(--text-muted); }
+        .grid-summary-wrap { overflow-x: auto; }
+        .grid-summary-table { border-collapse: collapse; width: 100%; }
+        .grid-summary-table th, .grid-summary-table td { padding: 8px 10px; text-align: center; border-bottom: 1px solid var(--border); font-size: 13px; }
+        .grid-summary-table .grid-row-label { text-align: left; font-weight: 500; }
+        .answer-list { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.6; }
+        .file-chip { display: inline-block; margin: 0 8px 6px 0; padding: 6px 12px; background: var(--purple-light); color: var(--purple); border-radius: 16px; font-size: 13px; text-decoration: none; }
+        .individual-response-card[data-hidden="true"] { display: none; }
     </style>
 </head>
 <body>
 
 {% include "navbar.html" %}
 
-<div class="responses-wrapper">
+<!--<div class="responses-wrapper">
 
     <div class="responses-header">
         <h1>{{ form.title }}</h1>
@@ -268,7 +277,7 @@
 
     {% else %}
 
-        <!-- ===================== SUMMARY TAB ===================== -->
+      
 
         <div id="summary-tab" class="tab-panel active">
 
@@ -282,11 +291,7 @@
                     <p class="question-summary-title">{{ element.question_text }}</p>
 
                     {% if element.question_type == "mcq" or element.question_type == "checkbox" or element.question_type == "dropdown" %}
-                        <!--
-                            Bar-chart-style summary. answer_counts is expected as a
-                            list of (option_text, count, percent) — computed in the view
-                            once submission + tallying is wired up.
-                        -->
+               
                         {% for option in element.options.all %}
                             <div class="answer-bar-row">
                                 <span class="answer-bar-label">{{ option.option_text }}</span>
@@ -299,7 +304,7 @@
 
                     {% else %}
                         <div class="text-answer-list">
-                            <!-- individual text/short/paragraph answers would list here -->
+                           
                             <p class="no-answer">No responses yet for this question.</p>
                         </div>
                     {% endif %}
@@ -309,7 +314,7 @@
 
         </div>
 
-        <!-- ===================== INDIVIDUAL TAB ===================== -->
+    
 
         <div id="individual-tab" class="tab-panel">
 
@@ -339,10 +344,156 @@
 
         </div>
 
+    {% endif %} 
+
+</div>   -->
+<div class="responses-wrapper">
+
+    <div class="responses-header">
+        <h1>{{ form.title }}</h1>
+        <p>{{ response_count }} response{{ response_count|pluralize }}</p>
+    </div>
+
+    <div class="tabs-row">
+        <button type="button" class="tab-btn active" onclick="switchTab('summary', this)">Summary</button>
+        <button type="button" class="tab-btn" onclick="switchTab('individual', this)">Individual</button>
+    </div>
+
+    {% if response_count == 0 %}
+
+        <div class="empty-state">
+            <div class="empty-state-icon">📭</div>
+            <p>No responses yet. Once people submit this form, answers will show up here.</p>
+        </div>
+
+    {% else %}
+
+        <!-- ============ SUMMARY ============ -->
+        <div id="summary-tab" class="tab-panel active">
+
+            <div class="summary-banner">
+                <span class="summary-count">{{ response_count }}</span>
+                <span class="summary-label">response{{ response_count|pluralize }}</span>
+            </div>
+
+            {% for s in summaries %}
+                <div class="question-summary-card">
+                    <p class="question-summary-title">{{ s.element.question_text }}</p>
+                    <p class="question-summary-meta">{{ s.answered }} answer{{ s.answered|pluralize }}</p>
+
+                    {% if s.kind == "choice" %}
+                        {% for row in s.rows %}
+                            <div class="answer-bar-row">
+                                <span class="answer-bar-label" title="{{ row.label }}">{{ row.label }}</span>
+                                <div class="answer-bar-track">
+                                    <div class="answer-bar-fill" data-percent=" {{ row.percent }}"></div>
+                                </div>
+                                <span class="answer-bar-count">{{ row.count }} ({{ row.percent }}%)</span>
+                            </div>
+                        {% endfor %}
+                        {% if s.average is not None %}
+                            <p class="scale-average">Average: {{ s.average }}</p>
+                        {% endif %}
+
+                    {% elif s.kind == "grid" %}
+                        <div class="grid-summary-wrap">
+                            <table class="grid-summary-table">
+                                <tr>
+                                    <th></th>
+                                    {% for c in s.columns %}<th>{{ c }}</th>{% endfor %}
+                                </tr>
+                                {% for r in s.table %}
+                                    <tr>
+                                        <td class="grid-row-label">{{ r.row }}</td>
+                                        {% for n in r.cells %}<td>{{ n }}</td>{% endfor %}
+                                    </tr>
+                                {% endfor %}
+                            </table>
+                        </div>
+
+                    {% elif s.kind == "file" %}
+                        <div>
+                            {% for a in s.answers %}
+                                {% for f in a.files.all %}
+                                    <a class="file-chip" href="{{ f.file.url }}" target="_blank">{{ f.filename }}</a>
+                                {% endfor %}
+                            {% empty %}
+                                <p class="no-answer">No files uploaded.</p>
+                            {% endfor %}
+                        </div>
+
+                    {% else %}
+                        <div class="text-answer-list">
+                            {% for a in s.answers %}
+                                <div class="text-answer-item">{{ a.value }}</div>
+                            {% empty %}
+                                <p class="no-answer">No answers yet.</p>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            {% endfor %}
+
+        </div>
+
+        <!-- ============ INDIVIDUAL ============ -->
+        <div id="individual-tab" class="tab-panel">
+
+            <div class="response-nav">
+                <button type="button" onclick="prevResponse()">‹</button>
+                <span id="responseIndexLabel">1 of {{ response_count }}</span>
+                <button type="button" onclick="nextResponse()">›</button>
+            </div>
+
+            {% for response in responses %}
+                <div class="response-card individual-response-card" data-index="{{ forloop.counter0 }}"
+                     {% if not forloop.first %}data-hidden="true"{% endif %}></div>>
+
+                    <div class="response-meta">
+                        Submitted {{ response.submitted_at|date:"M d, Y H:i" }}
+                        {% if response.respondent %} by {{ response.respondent.name }}{% endif %}
+                    </div>
+
+                    {% for row in response.rows %}
+                        <div class="response-answer-block">
+                            <p class="response-question-text">{{ row.element.question_text }}</p>
+
+                            {% if not row.answer %}
+                                <p class="response-answer-text no-answer">No answer.</p>
+
+                            {% elif row.element.question_type == "checkbox" %}
+                                <ul class="answer-list">
+                                    {% for v in row.answer.value %}<li>{{ v }}</li>{% endfor %}
+                                </ul>
+
+                            {% elif row.element.question_type == "mcq_grid" or row.element.question_type == "checkbox_grid" %}
+                                <ul class="answer-list">
+                                    {% for r, v in row.answer.grid_pairs %}
+                                        <li><strong>{{ r }}:</strong>
+                                            {% if row.element.question_type == "checkbox_grid" %}{{ v|join:", " }}{% else %}{{ v }}{% endif %}
+                                        </li>
+                                    {% endfor %}
+                                </ul>
+
+                            {% elif row.element.question_type == "file_upload" %}
+                                {% for f in row.answer.files.all %}
+                                    <a class="file-chip" href="{{ f.file.url }}" target="_blank">{{ f.filename }}</a>
+                                {% endfor %}
+
+                            {% else %}
+                                <p class="response-answer-text">{{ row.answer.answer_text }}</p>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+
+                </div>
+            {% endfor %}
+
+        </div>
+
     {% endif %}
 
 </div>
-
 <script>
 
 function switchTab(tabName, btn) {
@@ -356,7 +507,7 @@ function switchTab(tabName, btn) {
 }
 
 let currentResponseIndex = 0;
-const totalResponses = { response_count };
+const totalResponses ={{ response_count }};
 
 function showResponse(index) {
 
@@ -384,6 +535,9 @@ function prevResponse() {
         showResponse(currentResponseIndex);
     }
 }
+document.querySelectorAll(".answer-bar-fill").forEach(function(el) {
+    el.style.width = el.dataset.percent + "%";
+});
 
 </script>
 
