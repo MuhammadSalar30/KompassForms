@@ -14,7 +14,8 @@ from collections import Counter, defaultdict
 from django.utils.dateparse import parse_date, parse_time
 from .models import Response as FormResponse, Answer, AnswerFile
 
-
+from django.core.mail import send_mail
+from django.template.loader import render_to_string
 from .models import *
 from django.contrib import messages
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -573,7 +574,7 @@ def submit_response(request, form_id):
         answer = Answer.objects.create(response=response, element=element, answer_text=stored)
         for upload in uploads:
             AnswerFile.objects.create(answer=answer, file=upload)
-
+    notify_response_submitted(form, response)
     return JsonResponse({"success": True, "message": "Your response has been recorded."})
 def build_summary(element, answers):
 
@@ -683,3 +684,32 @@ def view_responses(request, form_id):
         "summaries": summaries,
         "response_count": len(responses),
     })
+
+from django.core.mail import send_mail
+from django.template.loader import render_to_string
+
+
+def notify_response_submitted(form, response):
+
+    if form.access_type != "restricted":
+        return
+
+    recipients = list(form.invites.values_list("email", flat=True))
+    if form.owner.email:
+        recipients.append(form.owner.email)
+
+    if not recipients:
+        return
+
+    subject = f"New response: {form.title}"
+
+    body = render_to_string("emails/new_response.txt", {
+        "form": form,
+        "response": response,
+    })
+
+    try:
+        send_mail(subject, body, None, recipients, fail_silently=False)
+    except Exception as e:
+        # Don't let a broken mail server break the actual submission.
+        print(f"Email notification failed: {e}")
