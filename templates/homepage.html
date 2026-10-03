@@ -16,7 +16,10 @@
     <div class="lp-navbar-inner">
 
         <div class="lp-brand">
-            <span class="lp-brand-icon">K</span>
+           <!-- <span class="lp-brand-icon">K</span> -->
+            <span class="navbar-brand">
+        <img src="{% static 'assets/kompass-logo.png' %}" alt="Kompass Logo" height="40">
+            </span>
             <span class="lp-brand-text">KompassForms</span>
         </div>
 
@@ -181,7 +184,7 @@
                     <span class="lp-dash-stat-value">1,204</span>
                     <span class="lp-dash-stat-label">Total Responses</span>
                 </div>
-                <a href="{% url 'signup' %}" class="lp-btn lp-btn-primary">+ Create New Form</a>
+            <!--    <a href="{% url 'signup' %}" class="lp-btn lp-btn-primary">+ Create New Form</a> -->
             </div>
 
             <div class="lp-dash-lists">
@@ -208,13 +211,13 @@
 </section>
 
 <!-- ===================== CTA ===================== -->
-<section class="lp-cta">
-    <div class="lp-section-inner lp-cta-inner">
-        <h2>Ready to create your first form?</h2>
+ <!--  <section class="lp-cta">
+   <div class="lp-section-inner lp-cta-inner">
+      <h2>Ready to create your first form?</h2>
         <p>Start creating forms and collecting responses with KompassForms.</p>
-        <a href="{% url 'signup' %}" class="lp-btn lp-btn-primary lp-btn-lg">Create Your First Form</a>
-    </div>
-</section>
+        <a href="{% url 'signup' %}" class="lp-btn lp-btn-primary lp-btn-lg">Create Your First Form</a>  
+    </div> 
+</section>-->
 
 <!-- ===================== FOOTER ===================== -->
 <footer class="lp-footer" id="contact">
