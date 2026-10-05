@@ -148,6 +148,9 @@ def login_view(request):
 
     # GET request → display login page
     return render(request, "login.html")
+def logout_view(request):
+    request.session.flush()
+    return redirect("login")
 def notify_invite_access(form, invite):
 
     permission_text = {

@@ -204,3 +204,18 @@
     border: 2px solid blue;
     font-family: inherit;
 }
+.lp-btn-logout {
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #d93025;
+    border: 1px solid #d93025;
+    background: transparent;
+    white-space: nowrap;
+    transition: background 0.15s ease;
+}
+
+.lp-btn-logout:hover {
+    background: #fce8e6;
+}

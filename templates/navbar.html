@@ -37,6 +37,9 @@
             <span class="user-avatar">{{ request.session.user_name|slice:":1"|upper }}</span>
             <span class="user-name">{{ request.session.user_name }}</span>
         </div>
+           <a href="{% url 'logout' %}" class="lp-btn-logout" title="Logout">
+        Logout
+    </a>
 
     </div>
 

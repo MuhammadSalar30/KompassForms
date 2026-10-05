@@ -89,7 +89,7 @@ DATABASES = {
         'NAME': 'kompass_forms',
         'USER': 'sa1',
         'PASSWORD': config("DB_PASSWORD"),
-        'HOST': r'HELPDESK\SQLEXPRESS',
+        'HOST': r'localhost',
      
         'OPTIONS': {
             'driver': 'ODBC Driver 18 for SQL Server',
