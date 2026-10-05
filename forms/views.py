@@ -100,6 +100,8 @@ def register_view(request):
     return render(request, "signup.html")
 def settings_view(request):
     return render(request, "settings.html")
+def is_admin_session(request):
+    return request.session.get("user_role") == "admin"
 
 def login_view(request):
 
@@ -131,6 +133,8 @@ def login_view(request):
         request.session["user_name"] = user.name
         request.session["user_email"] = user.email
         request.session["department"] = user.department
+        #request.session["user_role"] = user.role
+        request.session["user_role"] = "admin" if user.is_admin else "user"
 
         # Remember meW
         if remember:
@@ -471,26 +475,7 @@ def manage_access(request, form_id):
         return JsonResponse({"success": True})
    
 
-    if action == "update_permission":
-        invite_id = request.POST.get("invite_id")
-        permission = request.POST.get("permission")
-
-    if permission not in ("respond", "edit", "both"):
-        return JsonResponse({"success": False, "message": "Invalid permission."}, status=400)
-
-    try:
-        invite = FormInvite.objects.get(form=form, invite_id=invite_id)
-    except FormInvite.DoesNotExist:
-        return JsonResponse({"success": False, "message": "Invite not found."}, status=404)
-
-    invite.permission = permission
-    invite.save()
-
-    notify_invite_access(form, invite)
-
-    return JsonResponse({"success": True})
-
-    return JsonResponse({"success": False, "message": "Unknown action."}, status=400)
+   
 
 
 def view_form(request, form_id):

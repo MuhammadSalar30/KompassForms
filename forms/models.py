@@ -3,12 +3,23 @@ import uuid
 import json,os
 # Create your models here.
 class User(models.Model):
+    ROLE_CHOICES = [
+        ("admin", "Admin"),
+        ("user", "User"),
+    ]
     user_id= models.UUIDField(default=uuid.uuid1,primary_key=True,unique=True);
     name=models.CharField(max_length=200);
     password=models.CharField(max_length=200,blank=False);
     email=models.CharField(max_length=250,blank=False);
     departmentsList =[('F','Finance'),('HR','HR'),('Ink','Ink Store'),('It','IT'),('Maintain','Maintenance'),('Product','Production'),('Sales','Sales'),('Store','Store')]
     department=models.CharField(max_length=250,choices=departmentsList,default='IT')
+    role=models.CharField(max_length=10,choices=ROLE_CHOICES,default='user')
+    
+    @property
+    def is_admin(self):
+        return self.role == "admin"
+    def __str__(self):
+        return self.name
 
 
 
