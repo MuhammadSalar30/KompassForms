@@ -13,6 +13,10 @@ import os
 from collections import Counter, defaultdict
 from django.utils.dateparse import parse_date, parse_time
 from .models import Response as FormResponse, Answer, AnswerFile
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import get_object_or_404, redirect
+from django.views.decorators.http import require_POST
 
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
@@ -790,3 +794,15 @@ def notify_response_submitted(form, response):
     except Exception as e:
         # Don't let a broken mail server break the actual submission.
         print(f"Email notification failed: {e}")
+
+
+@require_POST
+def delete_form(request, form_id):
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return redirect('login')
+    form = get_object_or_404(Form, form_id=form_id, owner_id=user_id)
+    title = form.title
+    form.delete()
+    messages.success(request, f'Form "{title}" was deleted.')
+    return redirect('forms_list')

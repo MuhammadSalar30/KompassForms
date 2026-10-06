@@ -17,6 +17,8 @@ urlpatterns=[
     path('forms/edit/<uuid:form_id>/', views.forms_view, name='edit_form'),
     path('f/<uuid:form_id>/submit/', views.submit_response, name='submit_response'),
     path('logout/', views.logout_view, name='logout'),
+    #path('forms/<int:form_id>/delete/', views.delete_form, name='delete_form'),
+    path('forms/<uuid:form_id>/delete/', views.delete_form, name='delete_form'),
 
     
   

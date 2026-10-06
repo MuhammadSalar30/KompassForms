@@ -25,7 +25,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+
+DEBUG = config("DEBUG", default=False, cast=bool)
 
 ALLOWED_HOSTS = ["10.1.5.47", "localhost", "127.0.0.1"]
 
@@ -89,7 +90,7 @@ DATABASES = {
         'NAME': 'kompass_forms',
         'USER': 'sa1',
         'PASSWORD': config("DB_PASSWORD"),
-        'HOST': r'localhost',
+        'HOST': r'HELPDESK\SQLEXPRESS',
      
         'OPTIONS': {
             'driver': 'ODBC Driver 18 for SQL Server',

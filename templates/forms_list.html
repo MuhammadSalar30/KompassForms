@@ -23,6 +23,9 @@
         .forms-grid-header {
     margin-top: 32px;
 }
+.form-card-actions form { margin:0; }
+.delete-btn { background:none; border:none; padding:0; font:inherit; font-size:13px; color:#d93025; cursor:pointer; }
+.delete-btn:hover { text-decoration:underline; }
 .forms-grid-header {
     display: flex;
     justify-content: space-between;
@@ -44,7 +47,9 @@
         <h1>Your Forms</h1>
         <a href="{% url 'forms' %}" class="new-form-btn">+ New Form</a>
     </div>
-
+{% if messages %}
+    {% for message in messages %}<p>{{ message }}</p>{% endfor %}
+{% endif %}
     <div class="forms-grid">
         {% for form in forms %}
             <div class="form-card">
@@ -56,6 +61,12 @@
                 <div class="form-card-actions">
                     <a href="{% url 'edit_form' form.form_id %}">Edit</a>
                     <a href="{% url 'view_responses' form.form_id %}">Responses</a>
+                        <form method="post"
+          action="{% url 'delete_form' form.form_id %}"
+          onsubmit="return confirm('Delete &quot;{{ form.title|escapejs }}&quot; and all its responses? This cannot be undone.');">
+        {% csrf_token %}
+        <button type="submit" class="delete-btn">Delete</button>
+    </form>
                 </div>
             </div>
         {% empty %}
